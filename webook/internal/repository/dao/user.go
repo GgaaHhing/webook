@@ -28,7 +28,9 @@ func (dao *UserDAO) Insert(ctx context.Context, u User) error {
 	u.Ctime = now
 	u.Utime = now
 	err := dao.db.WithContext(ctx).Create(&u).Error
+	// 拿到me 是一个mysqlErr的结构体，里面有错误码
 	if me, ok := err.(*mysql.MySQLError); ok {
+		// 类型断言是否是mysql错误
 		const duplicateErr uint16 = 1062
 		if me.Number == duplicateErr {
 			// 用户冲突，邮箱冲突

@@ -3,7 +3,9 @@ package web
 import (
 	"basic-go/webook/internal/domain"
 	"basic-go/webook/internal/service"
+	"errors"
 	regexp "github.com/dlclark/regexp2"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
@@ -85,17 +87,57 @@ func (h *UserHandler) SignUp(ctx *gin.Context) {
 		Email:    req.Email,
 		Password: req.Password,
 	})
-	switch err {
-	case nil:
-		ctx.String(http.StatusOK, "注册成功")
-	case service.ErrDuplicateEmail:
-		ctx.String(http.StatusOK, "邮箱冲突，请换一个")
+	switch {
+	case err == nil:
+		ctx.JSON(http.StatusOK, gin.H{"msg": "注册成功"})
+	case errors.Is(err, service.ErrDuplicateEmail):
+		ctx.JSON(http.StatusOK, gin.H{"msg": "邮箱冲突，请换一个"})
 	default:
-		ctx.String(http.StatusOK, "系统错误")
+		ctx.JSON(http.StatusOK, gin.H{"msg": "系统错误"})
 	}
 }
 
 func (h *UserHandler) Login(ctx *gin.Context) {
+	type LoginReq struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	var req LoginReq
+	if err := ctx.Bind(&req); err != nil {
+		ctx.JSON(http.StatusOK, gin.H{
+			"msg": "参数错误",
+		})
+		return
+	}
+
+	user, err := h.svc.Login(ctx, domain.User{
+		Email:    req.Email,
+		Password: req.Password,
+	})
+	if errors.Is(err, service.ErrInvalidUserOrPassword) {
+		ctx.JSON(http.StatusOK, gin.H{
+			"msg": "用户名或密码错误",
+		})
+	}
+	if err != nil {
+		ctx.JSON(http.StatusOK, gin.H{
+			"msg": "系统错误",
+		})
+	}
+
+	sess := sessions.Default(ctx)
+	sess.Set("userId", user.Id)
+	sess.Options(sessions.Options{
+		MaxAge: 30 * 60,
+	})
+	sess.Save()
+
+	ctx.String(http.StatusOK, "登录成功")
+	ctx.JSON(http.StatusOK, gin.H{
+		"msg": "登录成功",
+	})
+
 }
 
 func (h *UserHandler) Edit(ctx *gin.Context) {
