@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	byteKey string = "q0@m6)ay3(Na094ShBq9nfb=nW*D{4c"
+	ByteKey string = "q0@m6)ay3(Na094ShBq9nfb=nW*D{4c"
 )
 
 func main() {
@@ -55,7 +55,8 @@ func initWebServer() *gin.Engine {
 	server.Use(cors.New(cors.Config{
 		AllowCredentials: true,
 
-		AllowHeaders: []string{"Content-Type"},
+		AllowHeaders:  []string{"Content-Type", "Authorization"},
+		ExposeHeaders: []string{"x-jwt-token"},
 		AllowOriginFunc: func(origin string) bool {
 			if strings.HasPrefix(origin, "http://localhost") {
 				//if strings.Contains(origin, "localhost") {
@@ -69,13 +70,13 @@ func initWebServer() *gin.Engine {
 	})
 
 	store, err := redis.NewStore(16, "tcp",
-		"localhost:6379", "", []byte(byteKey), []byte(byteKey))
+		"localhost:6379", "", []byte(ByteKey), []byte(ByteKey))
 	if err != nil {
 		panic(err)
 	}
 	server.Use(sessions.Sessions("mysession", store))
 
-	server.Use(middleware.NewLoginMiddlewareBuilder().IgnorePaths("/users/login",
+	server.Use(middleware.NewLoginJWTMiddlewareBuilder().IgnorePaths("/users/login",
 		"/users/signup").Build())
 
 	return server

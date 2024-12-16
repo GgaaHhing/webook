@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/gob"
 	"fmt"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -43,6 +44,7 @@ func (l *LoginMiddlewareBuilder) Build() gin.HandlerFunc {
 }
 
 func (l *LoginMiddlewareBuilder) CheckLogin() gin.HandlerFunc {
+	gob.Register(time.Now())
 	return func(ctx *gin.Context) {
 		path := ctx.Request.URL.Path
 		if path == "/users/signup" || path == "/users/login" {
@@ -66,6 +68,9 @@ func (l *LoginMiddlewareBuilder) CheckLogin() gin.HandlerFunc {
 		// 试着拿出上一次刷新时间
 		val := sess.Get(updateTimeKey)
 		lastUpdateTime, ok := val.(time.Time)
+		sess.Options(sessions.Options{
+			MaxAge: 60,
+		})
 		//now.Sub(time.time)：用于计算两个时间点之间的差值，结果是一个 time.Duration 类型的值。
 		if val == nil || !ok || now.Sub(lastUpdateTime) > time.Second*10 {
 			// 你这是第一次进来
@@ -78,5 +83,6 @@ func (l *LoginMiddlewareBuilder) CheckLogin() gin.HandlerFunc {
 				fmt.Println("  CheckLogin: " + err.Error())
 			}
 		}
+		sess.Save()
 	}
 }

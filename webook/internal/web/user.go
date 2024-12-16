@@ -7,13 +7,17 @@ import (
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	jwt "github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
 	"net/http"
+	"time"
 )
 
 const (
 	emailRegexPattern = "^\\w+([-+.]\\w+)*@\\w+([-.]\\w+)*\\.\\w+([-.]\\w+)*$"
 	// 和上面比起来，用 ` 看起来就比较清爽
-	passwordRegexPattern = `^(?=.*[A-Za-z])(?=.*\d)(?=.*[$@$!%*#?&])[A-Za-z\d$@$!%*#?&]{8,}$`
+	passwordRegexPattern        = `^(?=.*[A-Za-z])(?=.*\d)(?=.*[$@$!%*#?&])[A-Za-z\d$@$!%*#?&]{8,}$`
+	ByteKey              string = "q0@m6)ay3(Na094ShBq9nfb=nW*D{4c"
 )
 
 type UserHandler struct {
@@ -39,7 +43,7 @@ func (h *UserHandler) RegisterRoutes(server *gin.Engine) {
 	// POST /users/signup
 	ug.POST("/signup", h.SignUp)
 	// POST /users/login
-	ug.POST("/login", h.Login)
+	ug.POST("/login", h.LoginJWT)
 	// POST /users/edit
 	ug.POST("/edit", h.Edit)
 	// GET /users/profile
@@ -97,7 +101,7 @@ func (h *UserHandler) SignUp(ctx *gin.Context) {
 	}
 }
 
-func (h *UserHandler) Login(ctx *gin.Context) {
+func (h *UserHandler) LoginJWT(ctx *gin.Context) {
 	type LoginReq struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -111,6 +115,7 @@ func (h *UserHandler) Login(ctx *gin.Context) {
 		return
 	}
 
+	//拿到数据库Find返回的信息
 	user, err := h.svc.Login(ctx, domain.User{
 		Email:    req.Email,
 		Password: req.Password,
@@ -126,13 +131,24 @@ func (h *UserHandler) Login(ctx *gin.Context) {
 		})
 	}
 
+	//cookie
 	sess := sessions.Default(ctx)
 	sess.Set("userId", user.Id)
 	sess.Options(sessions.Options{
-		MaxAge: 30 * 60,
+		MaxAge: 60,
 	})
 	sess.Save()
 
+	// jwt携带token，方便后续Profiel从中解析uid然后去数据库查表
+	token := jwt.NewWithClaims(jwt.SigningMethodHS512, &UserClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
+		},
+		Uid: user.Id,
+	})
+	tokenStr, err := token.SignedString([]byte(ByteKey))
+
+	ctx.Header("x-jwt-token", tokenStr)
 	ctx.String(http.StatusOK, "登录成功")
 	ctx.JSON(http.StatusOK, gin.H{
 		"msg": "登录成功",
@@ -144,6 +160,32 @@ func (h *UserHandler) Edit(ctx *gin.Context) {
 
 }
 
+func (h *UserHandler) ProfileJWT(ctx *gin.Context) {
+	claims, ok := ctx.Get("claims")
+	if !ok {
+		zap.S().Error(" Profile 没有拿到claims")
+		ctx.JSON(http.StatusOK, gin.H{
+			"msg": "系统错误",
+		})
+		return
+	}
+	claims, ok = claims.(*UserClaims)
+	if !ok {
+		zap.S().Error(" Profile claims错误")
+		ctx.JSON(http.StatusOK, gin.H{
+			"msg": "系统错误",
+		})
+		return
+	}
+
+	ctx.String(http.StatusOK, "这是 profile")
+}
+
 func (h *UserHandler) Profile(ctx *gin.Context) {
 	ctx.String(http.StatusOK, "这是 profile")
+}
+
+type UserClaims struct {
+	jwt.RegisteredClaims
+	Uid int64
 }
